@@ -36,8 +36,11 @@ jobs:
         path: coverage/
         
   deploy:
+    # Only run if all matrix test jobs succeeded AND branch is main/master
     needs: test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      && needs.test.result == 'success'
     runs-on: ubuntu-latest
     
     steps:

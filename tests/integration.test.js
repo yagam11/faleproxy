@@ -1,42 +1,28 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
-const { sampleHtmlWithYale } = require('./test-utils');
 const nock = require('nock');
+const { sampleHtmlWithYale } = require('./test-utils');
+const app = require('../app');
 
 // Set a different port for testing to avoid conflict with the main app
 const TEST_PORT = 3099;
 let server;
 
 describe('Integration Tests', () => {
-  // Modify the app to use a test port
   beforeAll(async () => {
     // Mock external HTTP requests
     nock.disableNetConnect();
     nock.enableNetConnect('127.0.0.1');
-    
-  // Create a temporary test app file with a name Jest won't treat as a test file
-  await execAsync('cp app.js app.integration-server.js');
-  await execAsync(`sed -i '' 's/const PORT = 3001/const PORT = ${TEST_PORT}/' app.integration-server.js`);
-    
-    // Start the test server
-    server = require('child_process').spawn('node', ['app.integration-server.js'], {
-      detached: true,
-      stdio: 'ignore'
+    // Start server in-process so nock intercepts axios in app
+    await new Promise(resolve => {
+      server = app.listen(TEST_PORT, resolve);
     });
-    
-    // Give the server time to start
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }, 10000); // Increase timeout for server startup
+  }, 10000);
 
   afterAll(async () => {
-    // Kill the test server and clean up
-    if (server && server.pid) {
-      process.kill(-server.pid);
+    if (server) {
+      await new Promise(resolve => server.close(resolve));
     }
-  await execAsync('rm app.integration-server.js');
     nock.cleanAll();
     nock.enableNetConnect();
   });
@@ -48,7 +34,7 @@ describe('Integration Tests', () => {
       .reply(200, sampleHtmlWithYale);
     
     // Make a request to our proxy app
-  const response = await axios.post(`http://127.0.0.1:${TEST_PORT}/fetch`, {
+    const response = await axios.post(`http://127.0.0.1:${TEST_PORT}/fetch`, {
       url: 'https://example.com/'
     });
     
@@ -78,7 +64,7 @@ describe('Integration Tests', () => {
 
   test('Should handle invalid URLs', async () => {
     try {
-  await axios.post(`http://127.0.0.1:${TEST_PORT}/fetch`, {
+      await axios.post(`http://127.0.0.1:${TEST_PORT}/fetch`, {
         url: 'not-a-valid-url'
       });
       // Should not reach here
